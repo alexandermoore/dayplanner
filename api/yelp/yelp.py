@@ -36,8 +36,45 @@ class BusinessSearchResult():
         self.distance = distance
         self.transactions = transactions
 
-class Business():
-    pass
+class BusinessDetails():
+    def __init__(self,
+                 id=None,
+                 alias=None,
+                 name=None,
+                 image_url=None,
+                 is_claimed=None,
+                 is_closed=None,
+                 url=None,
+                 price=None,
+                 rating=None,
+                 review_count=None,
+                 phone=None,
+                 photos=None,
+                 hours=None,
+                 categories=None,
+                 latitude=None,
+                 longitude=None,
+                 location=None,
+                 transactions=None
+                 ):
+        self.id = id
+        self.alias = alias
+        self.name = name
+        self.image_url = image_url
+        self.is_claimed = is_claimed
+        self.is_closed = is_closed
+        self.url = url
+        self.price = price
+        self.rating = rating
+        self.review_count = review_count
+        self.phone = phone
+        self.photos = photos
+        self.hours = hours
+        self.categories = categories
+        self.latitude = latitude
+        self.longitude = longitude
+        self.location = location
+        self.transactions = transactions
 
 
 class YelpAPI():
@@ -62,6 +99,7 @@ class YelpAPI():
         response = requests.request('GET', url, headers=headers, params=url_params)
         return response.json()
 
+    # https://www.yelp.com/developers/documentation/v3/business_search
     def business_search(self,
                         term=None,
                         location=None,
@@ -95,6 +133,7 @@ class YelpAPI():
                     price=biz.get('price'),
                     phone=biz.get('phone'),
                     id=biz['id'],
+                    alias=biz['alias'],
                     is_closed=biz.get('is_closed'),
                     categories=cats,
                     review_count=biz.get('review_count'),
@@ -117,5 +156,43 @@ class YelpAPI():
         }
 
         return result
+
+    # https://www.yelp.com/developers/documentation/v3/business
+    def business_details(self, id):
+        result = self._request("businesses/{0}".format(id))
+        cats = [cat['alias'] for cat in result['categories']]
+        hours_raw = result.get('hours')
+
+        # Change format of hours to a list. One element for each day,
+        # and each element is a list of the various hours for that day.
+        # "REGULAR" is omitted since it's always that.
+        hours = None
+        if hours_raw is not None:
+            hours = [[] for _ in range(7)]
+            for hrs in hours_raw:
+                for elem in hrs['open']:
+                    hours[elem['day']].append({
+                        "is_overnight": elem['is_overnight'],
+                        "start": elem['start'],
+                        "end": elem['end']
+                    })
+
+        return BusinessDetails(
+            id=result['id'],
+            alias=result['alias'],
+            name=result.get('name'),
+            image_url=result.get('image_url'),
+            is_claimed=result.get('is_claimed'),
+            is_closed=result.get('is_closed'),
+            url=result.get('url'),
+            price=result.get('price'),
+            phone=result.get('phone'),
+            photos=result.get('photos'),
+            hours=hours,
+            categories=cats,
+            latitude=result['coordinates']['latitude'],
+            longitude=result['coordinates']['longitude'],
+            transactions=result.get('transactions')
+        )
 
 
