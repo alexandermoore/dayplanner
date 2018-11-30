@@ -5,8 +5,6 @@ class EdgeDoesNotExistException(Exception):
         # Call the base class constructor with the parameters it needs
         super(Exception, self).__init__(message)
 
-
-
 class Graph:
     def __init__(self):
         self.nodes = set()
