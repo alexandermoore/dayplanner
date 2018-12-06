@@ -31,6 +31,10 @@ class Graph:
         self.edges[node1].add(node2)
         self.edge_properties[(node1, node2)] = properties
 
+    """
+    Automatically construct the graph connecting nodes when edge_condition_fn is satisfied
+    and assigning properties via edge_properties_fn
+    """
     def auto_build_edges(self, edge_condition_fn, edge_properties_fn):
         for nodeA in self.nodes:
             for nodeB in self.nodes:

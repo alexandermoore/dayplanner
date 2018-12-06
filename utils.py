@@ -20,6 +20,9 @@ def lat_long_dist(lat1, lon1, lat2, lon2):
 def meters_to_miles(meters):
     return 0.00062137 * meters
 
+def miles_to_meters(miles):
+    return 1.0/0.00062137 * miles
+
 def dedupe_list(items, item_key_fn):
     seen_keys = set()
     new_items = []
@@ -29,3 +32,6 @@ def dedupe_list(items, item_key_fn):
             new_items.append(itm)
         seen_keys.add(key)
     return new_items
+
+def day_of_week(dt):
+    return dt.weekday()

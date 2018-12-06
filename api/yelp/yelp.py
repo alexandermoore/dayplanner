@@ -1,5 +1,7 @@
 import json
 import requests
+import datetime
+import time
 
 class BusinessSearchResult():
     def __init__(self,
@@ -88,7 +90,7 @@ class YelpAPI():
             cats = json.load(f)
         categories = {}
         for elem in cats:
-            categories[elem['alias']] = elem['title']
+            categories[elem['alias']] = {"title": elem['title'], "parents": elem['parents']}
         return categories
 
     def _request(self, endpoint, url_params):
@@ -98,6 +100,24 @@ class YelpAPI():
         url = "{0}{1}".format(self.API_HOST, endpoint)
         response = requests.request('GET', url, headers=headers, params=url_params)
         return response.json()
+
+    def flatten_raw_categories(self, categories):
+        return set([cat['alias'] for cat in categories]) if categories is not None else None
+
+    def add_parent_categories(self, categories):
+        if categories is None:
+            return None
+        enhanced_categories = set()
+        queue = []
+        queue.extend(categories)
+        while(len(queue) > 0):
+            cat = queue.pop()
+            if cat not in enhanced_categories:
+                if cat in self.CATEGORIES:
+                    parents = self.CATEGORIES[cat]['parents']
+                    queue.extend(parents)
+                enhanced_categories.add(cat)
+        return enhanced_categories
 
     # https://www.yelp.com/developers/documentation/v3/business_search
     def business_search(self,
@@ -114,9 +134,10 @@ class YelpAPI():
                         price=None,
                         open_now=None,
                         open_at=None,
-                        attributes=None
-                        ):
+                        attributes=None,
+                        add_parent_categories=False):
         params = dict(locals())
+        del params['add_parent_categories']
         keys = list(params.keys())
         for k in keys:
             if params[k] is None:
@@ -126,7 +147,9 @@ class YelpAPI():
         businesses = response['businesses']
         business_objs = []
         for biz in businesses:
-            cats = [cat['alias'] for cat in biz['categories']]
+            cats = self.flatten_raw_categories(biz.get('categories'))
+            if add_parent_categories:
+                cats = self.add_parent_categories(cats)
             business_objs.append(
                 BusinessSearchResult(
                     rating=biz.get('rating'),
@@ -158,9 +181,11 @@ class YelpAPI():
         return result
 
     # https://www.yelp.com/developers/documentation/v3/business
-    def business_details(self, id):
-        result = self._request("businesses/{0}".format(id))
-        cats = [cat['alias'] for cat in result['categories']]
+    def business_details(self, id, add_parent_categories=False):
+        result = self._request("businesses/{0}".format(id), {})
+        cats = self.flatten_raw_categories(result.get('categories'))
+        if add_parent_categories:
+            cats = self.add_parent_categories(cats)
         hours_raw = result.get('hours')
 
         # Change format of hours to a list. One element for each day,
@@ -171,10 +196,12 @@ class YelpAPI():
             hours = [[] for _ in range(7)]
             for hrs in hours_raw:
                 for elem in hrs['open']:
+                    stime = time.strptime(elem['start'], "%H%M")
+                    etime = time.strptime(elem['end'], "%H%M")
                     hours[elem['day']].append({
                         "is_overnight": elem['is_overnight'],
-                        "start": elem['start'],
-                        "end": elem['end']
+                        "start": datetime.time(stime.tm_hour, stime.tm_min),
+                        "end": datetime.time(etime.tm_hour, etime.tm_min)
                     })
 
         return BusinessDetails(
@@ -195,4 +222,6 @@ class YelpAPI():
             transactions=result.get('transactions')
         )
 
+    def event_search(self):
+        pass
 
