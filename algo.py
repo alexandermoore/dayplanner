@@ -2,8 +2,10 @@ from graph import Graph
 from utils import lat_long_dist, day_of_week
 import datetime
 
-TYPE_BUSINESS = 0
-TYPE_EVENT = 1
+class EntityTypes:
+    BUSINESS = 0
+    EVENT = 1
+
 
 
 class PlanState:
@@ -33,11 +35,14 @@ class Entity:
         self.spans_days = False # For events across multiple days where time will be unclear
         self.entity = business if business is not None else event
 
-        self.type = TYPE_BUSINESS if business is not None else TYPE_EVENT
+        self.type = EntityTypes.BUSINESS if business is not None else EntityTypes.EVENT
         if business is not None:
             pass
         elif event is not None:
-            pass
+            self.start_dt = event.start_time
+            self.end_dt = event.end_time
+            if self.end_dt - self.start_dt > datetime.timedelta(hours=24):
+                self.spans_days = True
 
     def hours_open(self, dt):
         pass
@@ -45,9 +50,8 @@ class Entity:
     def open_at(self, dt):
         is_open = False
         # If it's an event, check that we're between the start and end times
-        if self.type == TYPE_EVENT:
-            date = dt.date
-            if self.start_dt <= date <= self.end_dt:
+        if self.type == EntityTypes.EVENT:
+            if self.start_dt <= dt <= self.end_dt:
                 is_open = True
         # Otherwise check that it's between business hours
         else:
@@ -66,8 +70,8 @@ class Entity:
         return is_open
 
 # Todo: Maybe abstract these node/edge conditions out into a function for more flexibility
-def build_business_graph(businesses,
-                         category_sequence,
+def build_entity_graph(entities,
+                         category_sequence=None,
                          min_distance=0,
                          max_distance=10e10,
                          min_rating=None,
@@ -78,40 +82,46 @@ def build_business_graph(businesses,
                          max_review_count=None,
                          ignore_missing_info=True):
     g = Graph()
-    for b in businesses:
-        bb = b.entity
-        # Ignore things with no hours
-        if bb.hours is None:
-            continue
-        # Ignore rating if filter applied but it's missing
-        if min_rating is not None and max_rating is not None and bb.rating is None and ignore_missing_info:
-            continue
-        # Ignore price if filter applied but it's missing
-        if min_dollar_signs is not None and max_dollar_signs is not None and bb.price is None and ignore_missing_info:
-            continue
-        # Ignore review count if filter applied but it's missing
-        if min_review_count is not None and bb.review_count is None and ignore_missing_info:
-            continue
+    for b in entities:
+        if b.type == EntityTypes.BUSINESS:
+            bb = b.entity
+            # Ignore things with no hours
+            if bb.hours is None:
+                continue
+            # Ignore rating if filter applied but it's missing
+            if min_rating is not None and max_rating is not None and bb.rating is None and ignore_missing_info:
+                continue
+            # Ignore price if filter applied but it's missing
+            if min_dollar_signs is not None and max_dollar_signs is not None and bb.price is None and ignore_missing_info:
+                continue
+            # Ignore review count if filter applied but it's missing
+            if min_review_count is not None and bb.review_count is None and ignore_missing_info:
+                continue
 
-        # Check rating
-        if min_rating is not None and max_rating is not None and (bb.rating < min_rating or bb.rating > max_rating):
-            continue
-        # Check price
-        if min_dollar_signs is not None and max_dollar_signs is not None and (len(bb.price) > max_dollar_signs or len(bb.price) < min_dollar_signs):
-            continue
-        # Check review count
-        if min_review_count is not None and max_review_count is not None and  (bb.review_count < min_review_count or bb.review_count > max_review_count):
-            continue
+            # Check rating
+            if min_rating is not None and max_rating is not None and (bb.rating < min_rating or bb.rating > max_rating):
+                continue
+            # Check price
+            if min_dollar_signs is not None and max_dollar_signs is not None and (len(bb.price) > max_dollar_signs or len(bb.price) < min_dollar_signs):
+                continue
+            # Check review count
+            if min_review_count is not None and max_review_count is not None and  (bb.review_count < min_review_count or bb.review_count > max_review_count):
+                continue
+        else:
+            # Event conditions go here (if I decide to add those... may be better to roll them into constraints
+            # that are applied now at graph creation time so all constraints defined in same way.
+            pass
 
         # Add if all conditions passed
         g.add_node(b)
 
     valid_seqs = set()
     # Generate all possible sequences of categories for faster lookup
-    for i in range(len(category_sequence) - 1):
-        for j in range(len(category_sequence[i])):
-            for k in range(len(category_sequence[i + 1])):
-                valid_seqs.add((category_sequence[i][j], category_sequence[i + 1][k]))
+    if category_sequence is not None:
+        for i in range(len(category_sequence) - 1):
+            for j in range(len(category_sequence[i])):
+                for k in range(len(category_sequence[i + 1])):
+                    valid_seqs.add((category_sequence[i][j], category_sequence[i + 1][k]))
 
     def is_valid_edge(bizA, bizB):
         bizA = bizA.entity
@@ -125,7 +135,7 @@ def build_business_graph(businesses,
         categories_valid = False
         for catA in bizA.categories:
             for catB in bizB.categories:
-                        if (catA, catB) in valid_seqs:
+                        if (catA, catB) in valid_seqs or category_sequence is None:
                             return True
         return categories_valid
 

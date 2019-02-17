@@ -1,6 +1,10 @@
 from math import radians, cos, sin, asin, sqrt
 
 
+class TIMEZONES:
+    Eastern = "America/New_York"
+    Pacific = "America/Los_Angeles"
+
 def lat_long_dist(lat1, lon1, lat2, lon2):
     """
     Calculate the great circle distance between two points

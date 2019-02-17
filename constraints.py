@@ -72,7 +72,7 @@ class BooleanConstraints:
             return bool_fn(graph, curr_state, next_state, global_memory)
         return bool_fn_
 
-class CategoryConstraints:
+class EdgeConstraints:
     def __init__(self):
         pass
 
@@ -108,10 +108,20 @@ class CategoryConstraints:
 
 
 class StateConstraints:
+    def __init__(self):
+        self.b = BooleanConstraints()
+
     # Pass a dict mapping # previous states to a constraint (mapping happens on curr_state)
-    def prev_state_dependent(self, constraint_dict):
+    # Ignore missing keys specifies whether missing keys are treated as "True"
+    def prev_state_dependent(self, constraint_dict, ignore_missing_keys=True):
         def prev_state_dependent_fn(graph, curr_state, next_state, global_memory):
-            constraint = constraint_dict[curr_state.num_prev_states]
+            if curr_state.num_prev_states in constraint_dict:
+                constraint = constraint_dict[curr_state.num_prev_states]
+            elif ignore_missing_keys:
+                constraint = self.b.bool_true()
+            else:
+                # TODO: Create separate exception class for this
+                raise Exception("Missing state dependent key {}".format(curr_state.num_prev_states))
             return constraint(graph, curr_state, next_state, global_memory)
         return prev_state_dependent_fn
 
@@ -132,12 +142,12 @@ class UberConstraints:
     def __init__(self):
         self._b = BooleanConstraints()
         self._s = StateConstraints()
-        self._c = CategoryConstraints()
+        self._e = EdgeConstraints()
 
     def follows_cat_sequence(self, category_sequence):
         const_dict = {}
         for i in range(len(category_sequence) - 1):
-            const_dict[i] = self._c.category_seq(category_sequence[i], category_sequence[i + 1])
+            const_dict[i] = self._e.category_seq(category_sequence[i], category_sequence[i + 1])
         const_dict[len(category_sequence) - 1] = self._b.bool_false()
         return self._s.prev_state_dependent(const_dict)
 
