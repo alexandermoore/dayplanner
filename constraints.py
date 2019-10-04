@@ -6,78 +6,83 @@ Executed on all edges from a particular state
 
 from utils import meters_to_miles
 
+
 class BooleanConstraints:
     def __init__(self):
         pass
 
     def bool_and(self, constraints):
-        def bool_and_fn(graph, curr_state, next_state, global_memory):
+        def bool_and_fn(constraint_params):
             for c in constraints:
-                if not c(graph, curr_state, next_state, global_memory):
+                if not c(constraint_params):
                     return False
             return True
         return bool_and_fn
 
     def bool_or(self, constraints):
-        def bool_or_fn(graph, curr_state, next_state, global_memory):
+        def bool_or_fn(constraint_params):
             for c in constraints:
-                if c(graph, curr_state, next_state, global_memory):
+                if c(constraint_params):
                     return True
             return False
         return bool_or_fn
 
     def bool_not(self, constraints):
-        def bool_not_fn(graph, curr_state, next_state, global_memory):
+        def bool_not_fn(constraint_params):
             for c in constraints:
-                if c(graph, curr_state, next_state, global_memory):
+                if c(constraint_params):
                     return False
             return True
         return bool_not_fn
 
     def bool_true(self):
-        def bool_true_fn(graph, curr_state, next_state, global_memory):
+        def bool_true_fn(constraint_params):
             return True
         return bool_true_fn
 
     def bool_false(self):
-        def bool_false_fn(graph, curr_state, next_state, global_memory):
+        def bool_false_fn(constraint_params):
             return False
         return bool_false_fn
 
     def bool_if_then_else(self, if_constraint, then_constraint, else_constraint):
-        def bool_if_then_else_fn(graph, curr_state, next_state, global_memory):
-            if if_constraint(graph, curr_state, next_state, global_memory):
-                return then_constraint(graph, curr_state, next_state, global_memory)
+        def bool_if_then_else_fn(constraint_params):
+            if if_constraint(constraint_params):
+                return then_constraint(constraint_params)
             else:
-                return else_constraint(graph, curr_state, next_state, global_memory)
+                return else_constraint(constraint_params)
         return bool_if_then_else_fn
 
     def bool_equals(self, curr_state_fn, next_state_fn):
-        def bool_equals_fn(graph, curr_state, next_state, global_memory):
-            return curr_state_fn(graph, curr_state, next_state, global_memory) == next_state_fn(graph, curr_state, next_state, global_memory)
+        def bool_equals_fn(constraint_params):
+            return curr_state_fn(constraint_params) == next_state_fn(constraint_params)
         return bool_equals_fn
 
     def bool_gtr_than(self, curr_state_fn, next_state_fn):
-        def bool_gt_fn(graph, curr_state, next_state, global_memory):
-            return curr_state_fn(graph, curr_state, next_state, global_memory) > next_state_fn(graph, curr_state, next_state, global_memory)
+        def bool_gt_fn(constraint_params):
+            return curr_state_fn(constraint_params) > next_state_fn(constraint_params)
         return bool_gt_fn
 
     def bool_less_than(self, curr_state_fn, next_state_fn):
-        def bool_less_fn(graph, curr_state, next_state, global_memory):
-            return curr_state_fn(graph, curr_state, next_state, global_memory) < next_state_fn(graph, curr_state, next_state, global_memory)
+        def bool_less_fn(constraint_params):
+            return curr_state_fn(constraint_params) < next_state_fn(constraint_params)
         return bool_less_fn
 
     def bool_boolean(self, bool_fn):
-        def bool_fn_(graph, curr_state, next_state, global_memory):
-            return bool_fn(graph, curr_state, next_state, global_memory)
+        def bool_fn_(constraint_params):
+            return bool_fn(constraint_params)
         return bool_fn_
+
 
 class EdgeConstraints:
     def __init__(self):
         pass
 
     def category_seq(self, valid_cats_A, valid_cats_B):
-        def cat_fn(graph, curr_state, next_state, global_memory):
+        def cat_fn(constraint_params):
+            curr_state = constraint_params.curr_state
+            next_state = constraint_params.next_state
+
             curr_intersect = False
             next_intersect = False
 
@@ -114,7 +119,8 @@ class StateConstraints:
     # Pass a dict mapping # previous states to a constraint (mapping happens on curr_state)
     # Ignore missing keys specifies whether missing keys are treated as "True"
     def prev_state_dependent(self, constraint_dict, ignore_missing_keys=True):
-        def prev_state_dependent_fn(graph, curr_state, next_state, global_memory):
+        def prev_state_dependent_fn(constraint_params):
+            curr_state = constraint_params.curr_state
             if curr_state.num_prev_states in constraint_dict:
                 constraint = constraint_dict[curr_state.num_prev_states]
             elif ignore_missing_keys:
@@ -122,18 +128,21 @@ class StateConstraints:
             else:
                 # TODO: Create separate exception class for this
                 raise Exception("Missing state dependent key {}".format(curr_state.num_prev_states))
-            return constraint(graph, curr_state, next_state, global_memory)
+            return constraint(constraint_params)
         return prev_state_dependent_fn
 
     def curr_state_category_in(self, cats):
-        def curr_state_category_in_fn(graph, curr_state, next_state, global_memory):
+        def curr_state_category_in_fn(constraint_params):
+            curr_state = constraint_params.curr_state
+            #print(curr_state.node.entity.categories)
             if len(curr_state.node.entity.categories.intersection(cats)):
                 return True
             return False
         return curr_state_category_in_fn
 
     def no_repeat_visits(self):
-        def fn(graph, curr_state, next_state, global_memory):
+        def fn(constraint_params):
+            next_state = constraint_params.next_state
             prev = set([s.node.entity.id for s in next_state.prev_state_list()])
             return next_state.node.entity.id not in prev
         return fn
@@ -157,22 +166,33 @@ class StateExtractors:
         pass
 
     def get_categories(self, use_next=False):
-        def getcats_fn(graph, curr_state, next_state, global_memory):
-            state = curr_state if not use_next else next_state
+        def getcats_fn(constraint_params):
+            state = constraint_params.curr_state if not use_next else constraint_params.next_state
             if state is not None:
                 return state.node.entity.categories
             else:
                 return set()
         return getcats_fn
 
+    def get_entity_type(self, use_next=False):
+        def get_entity_type_fn(constraint_params):
+            state = constraint_params.curr_state if not use_next else constraint_params.next_state
+            return state.node.entity.entity
+
     def get_attr(self, attr_name, use_next=False):
-        def getattr_fn(graph, curr_state, next_state, global_memory):
-            state = curr_state if not use_next else next_state
+        def getattr_fn(constraint_params):
+            state = constraint_params.curr_state if not use_next else constraint_params.next_state
             return getattr(state, attr_name)
         return getattr_fn
 
+    def get_entity_attr(self, attr_name, use_next=False):
+        def get_node_attr_fn(constraint_params):
+            def getattr_fn(constraint_params):
+                state = constraint_params.curr_state if not use_next else constraint_params.next_state
+                return getattr(state, attr_name)
+
     def const(self, value):
-        def const_fn(graph, curr_state, next_state, global_memory):
+        def const_fn(constraint_params):
             return value
         return const_fn
 
@@ -181,7 +201,8 @@ class EdgeExtractors:
         pass
 
     def get_distance(self, use_miles=False):
-        def fn(graph, curr_state, next_state, global_memory):
+        def fn(constraint_params):
+            graph, curr_state, next_state = constraint_params.graph, constraint_params.curr_state, constraint_params.next_state
             dist = graph.get_edge_properties(curr_state.node, next_state.node)['dist']
             return dist if not use_miles else meters_to_miles(dist)
         return fn

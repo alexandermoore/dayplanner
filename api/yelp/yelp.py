@@ -228,16 +228,19 @@ class YelpAPI():
                         radius=None,
                         categories=None,
                         locale=None,
-                        limit=None,
-                        offset=None,
+                        limit=20,
+                        offset=0,
                         sort_by=None,
                         price=None,
                         open_now=None,
                         open_at=None,
                         attributes=None,
-                        add_parent_categories=False):
+                        add_parent_categories=False,
+                        max_num_businesses=20):
+        limit = min(max_num_businesses, limit)
         params = dict(locals())
         del params['add_parent_categories']
+        del params['max_num_businesses']
         del params['self']
         keys = list(params.keys())
         for k in keys:
@@ -246,6 +249,28 @@ class YelpAPI():
         response = self._request("businesses/search", params)
         businesses = response['businesses']
         business_objs = self._process_business_search_businesses(businesses, add_parent_categories)
+
+        num_businesses_left = max_num_businesses - len(business_objs) - offset
+        if num_businesses_left > 0 and len(business_objs) == limit:
+            print(num_businesses_left, "businesses left. Found", len(business_objs)," just now.")
+            additional_business_objs = self.business_search(term=term,
+                                                            location=location,
+                                                            latitude=latitude,
+                                                            longitude=longitude,
+                                                            radius=radius,
+                                                            categories=categories,
+                                                            locale=locale,
+                                                            limit=min(limit, num_businesses_left),
+                                                            offset= offset + len(business_objs),
+                                                            sort_by=sort_by,
+                                                            price=price,
+                                                            open_now=open_now,
+                                                            open_at=open_at,
+                                                            attributes=attributes,
+                                                            add_parent_categories=add_parent_categories,
+                                                            max_num_businesses=max_num_businesses)['businesses']
+            business_objs.extend(additional_business_objs)
+
         result = {
             "total": response['total'],
             "businesses": business_objs,
@@ -311,6 +336,7 @@ class YelpAPI():
         results = self._graphql_request(query)
 
         all_hours = []
+        print(results)
         for i in range(len(ids)):
             result = results["b{0}".format(i)]
             hours_raw = result.get('hours')
@@ -328,7 +354,8 @@ class YelpAPI():
 
     def _reformat_business_hours(self, hours_raw):
         # Change format of hours to a list. One element for each day,
-        # and each element is a list of the various hours for that day.
+        # and each element is a list of the various hours for that day,
+        # where the "various hours" are specified in dictionaries.
         # "REGULAR" is omitted since it's always that.
         hours = None
         if hours_raw is not None:

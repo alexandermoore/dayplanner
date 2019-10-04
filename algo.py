@@ -26,6 +26,14 @@ class PlanState:
         self._prev_state_list = out[::-1]
         return self._prev_state_list
 
+class ConstraintParams:
+    def __init__(self, graph, curr_state, next_state, global_memory):
+        self.graph = graph
+        self.curr_state = curr_state
+        self.next_state = next_state
+        self.global_memory = global_memory if global_memory is not None else {}
+
+
 class Entity:
     def __init__(self, business=None, event=None):
         self.open_times = {}
@@ -69,6 +77,12 @@ class Entity:
                     break
         return is_open
 
+    def get_address(self):
+        if self.type == EntityTypes.BUSINESS:
+            return " ".join(self.entity.location['display_address'])
+        else:
+            return ""
+
 # Todo: Maybe abstract these node/edge conditions out into a function for more flexibility
 def build_entity_graph(entities,
                          category_sequence=None,
@@ -92,20 +106,20 @@ def build_entity_graph(entities,
             if min_rating is not None and max_rating is not None and bb.rating is None and ignore_missing_info:
                 continue
             # Ignore price if filter applied but it's missing
-            if min_dollar_signs is not None and max_dollar_signs is not None and bb.price is None and ignore_missing_info:
+            if(min_dollar_signs is not None or max_dollar_signs is not None) and bb.price is None and ignore_missing_info:
                 continue
             # Ignore review count if filter applied but it's missing
             if min_review_count is not None and bb.review_count is None and ignore_missing_info:
                 continue
 
             # Check rating
-            if min_rating is not None and max_rating is not None and (bb.rating < min_rating or bb.rating > max_rating):
+            if (min_rating is not None and bb.rating < min_rating) or (max_rating is not None and bb.rating > max_rating):
                 continue
             # Check price
-            if min_dollar_signs is not None and max_dollar_signs is not None and (len(bb.price) > max_dollar_signs or len(bb.price) < min_dollar_signs):
+            if (min_dollar_signs is not None and len(bb.price) < min_dollar_signs) or (max_dollar_signs is not None and len(bb.price) > max_dollar_signs):
                 continue
             # Check review count
-            if min_review_count is not None and max_review_count is not None and  (bb.review_count < min_review_count or bb.review_count > max_review_count):
+            if min_review_count is not None and max_review_count is not None and (bb.review_count < min_review_count or bb.review_count > max_review_count):
                 continue
         else:
             # Event conditions go here (if I decide to add those... may be better to roll them into constraints
@@ -156,9 +170,17 @@ def default_distance_time_fn(dist):
     avg_walk_speed = 1.4 # m/s
     return datetime.timedelta(seconds=dist/avg_walk_speed)
 
-
 def build_neighbor_state_fn(constraint, time_spent_fn=default_time_spent_fn, distance_time_fn=default_distance_time_fn):
-    def neighbor_state_fn(graph, curr_state, global_memory):
+    """
+    Returns a function that returns all the valid neighbors of given state.
+    :param constraint: The constraint that determines whether something is a valid neighbor or not.
+    :param time_spent_fn: A function which returns how much time could be spent somewhere given an Entity as a list
+                          of timedeltas.
+    :param distance_time_fn: A function that converts distance (meters) to travel time (timedelta)
+    :return:
+    """
+    def neighbor_state_fn(constraint_params):
+        graph, curr_state, global_memory = constraint_params.graph, constraint_params.curr_state, constraint_params.global_memory
         neighbors = []
         num_prev_states = curr_state.num_prev_states + 1
         potential_neighbors = graph.get_edges(curr_state.node)
@@ -177,7 +199,8 @@ def build_neighbor_state_fn(constraint, time_spent_fn=default_time_spent_fn, dis
                     # Make sure it's open
                     if node.open_at(next_end_dt):
                         next_state = PlanState(node, next_start_dt, next_end_dt, curr_state, num_prev_states)
-                        if constraint(graph, curr_state, next_state, global_memory):
+                        constraint_params = ConstraintParams(graph, curr_state, next_state, global_memory)
+                        if constraint(constraint_params):
                             neighbors.append(next_state)
 
         return neighbors
@@ -185,6 +208,14 @@ def build_neighbor_state_fn(constraint, time_spent_fn=default_time_spent_fn, dis
 
 
 def build_initial_states(graph, possible_start_dts, constraint, time_spent_fn=default_time_spent_fn):
+    """
+    Returns a list of valid starting states according to the constraint.
+    :param graph: The graph whose states will be returned.
+    :param possible_start_dts: The possible start times.
+    :param constraint: The constraint on initial states (passed as the "current state" to constraints)
+    :param time_spent_fn: A function that returns a list of possible times spent given an Entity.
+    :return:
+    """
     initial_states = []
     for node in graph.nodes:
         possible_times_spent = time_spent_fn(node)
@@ -194,11 +225,19 @@ def build_initial_states(graph, possible_start_dts, constraint, time_spent_fn=de
                     end_dt = start_dt + time_spent
                     if node.open_at(end_dt):
                         initial_state = PlanState(node, start_dt, end_dt, None, 0)
-                        if constraint(graph, initial_state, None, {}):
+                        constraint_params = ConstraintParams(graph, initial_state, None, None)
+                        if constraint(constraint_params):
                             initial_states.append(initial_state)
     return initial_states
 
 def build_success_state_fn(constraint):
-    def success_state_fn(graph, curr_state, global_memory):
-        return constraint(graph, curr_state, None, global_memory)
+    """
+    A function that returns True if the current state is a success state, and False otherwise.
+    Passes the current candidate success state as the "current state". Does not include any
+    "next state".
+    :param constraint: The constraint indicating whether this is a success state.
+    :return:
+    """
+    def success_state_fn(constraint_params):
+        return constraint(constraint_params)
     return success_state_fn
